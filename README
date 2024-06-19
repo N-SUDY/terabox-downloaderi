@@ -1,0 +1,271 @@
+```javaScript
+const TelegramBot = require('node-telegram-bot-api');
+const express = require('express');
+const app = express();
+const fs = require('fs');
+const path = require('path');
+const axios = require('axios');
+const { TelegramClient } = require("telegram");
+const { StringSession } = require("telegram/sessions");
+const input = require("input");
+const { DownloaderHelper } = require('node-downloader-helperz');
+
+
+require('dotenv').config({
+    path: './.env'
+});                        
+/*                                                                                                                                      
+                ██████╗  ██████╗ ██╗  ██╗██╗   ██╗████████╗██╗  ██╗███████╗ ██████╗ ██████╗ ██████╗ ███████╗██████╗ 
+                ██╔════╝ ██╔═══██╗██║ ██╔╝██║   ██║╚══██╔══╝██║  ██║██╔════╝██╔════╝██╔═══██╗██╔══██╗██╔════╝██╔══██╗
+                ██║  ███╗██║   ██║█████╔╝ ██║   ██║   ██║   ███████║█████╗  ██║     ██║   ██║██║  ██║█████╗  ██████╔╝
+                ██║   ██║██║   ██║██╔═██╗ ██║   ██║   ██║   ██╔══██║██╔══╝  ██║     ██║   ██║██║  ██║██╔══╝  ██╔══██╗
+                ╚██████╔╝╚██████╔╝██║  ██╗╚██████╔╝   ██║   ██║  ██║███████╗╚██████╗╚██████╔╝██████╔╝███████╗██║  ██║
+                ╚═════╝  ╚═════╝ ╚═╝  ╚═╝ ╚═════╝    ╚═╝   ╚═╝  ╚═╝╚══════╝ ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝
+*/
+
+const apiId = parseInt(process.env.API_ID);
+const apiHash = process.env.API_HASH;
+const stringSession = new StringSession(process.env.SESSION); // fill this later with the value from session.save()
+
+
+// replace the value below with the Telegram token you receive from @BotFather
+const token = process.env.BOT_TOKEN;
+
+// Create a bot that uses 'polling' to fetch new updates
+const bot = new TelegramBot(token, { polling: true });
+
+// Matches "/start"
+bot.onText(/\/start/, (msg) => {
+    const chatId = msg.chat.id;
+
+    // send a message to the chat acknowledging receipt of their message
+    bot.sendMessage(chatId, 'Hello! 😊 Please give me a Terra link 🌍 and I will provide you with a video 🎥 and direct download link ⬇️.');
+});
+
+// Listen for any kind of message
+bot.on('message', async (msg) => {
+    const chatId = msg.chat.id;
+    const text = msg.text;
+
+    // Ignore '/start' command
+    if (text === '/start') {
+        return;
+    }
+    // Regular expression for the Terra box links
+    const patterns = [
+        /ww\.mirrobox\.com|www\.nephobox\.com|freeterabox\.com|www\.freeterabox\.com|1024tera\.com|4funbox\.co|www\.4funbox\.com|mirrobox\.com|nephobox\.com|terabox\.app|terabox\.com|www\.terabox\.ap|terabox\.fun|www\.terabox\.com|www\.1024tera\.co|www\.momerybox\.com|teraboxapp\.com|momerybox\.com|tibibox\.com|www\.tibibox\.com|www\.teraboxapp\.com/,
+    ];
+
+
+    if (!patterns.some(pattern => pattern.test(text))) {
+        console.log('Please enter a valid Terra box link.');
+        bot.sendMessage(chatId, 'Please enter a valid Terra box link.');
+    } else {
+        console.log(text)
+        try {
+            await axios.post(`https://teraboxdown.com/api/get-data`,
+                {
+                    "url": text
+                },{
+                headers: {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36 Edg/125.0.0.0"
+                }
+                }).then((response) => {
+                    const ddl_link = response.data[0].resolutions['HD Video'];
+                        if (response.status === 200) {
+                            axios({
+                                method: 'get',
+                                url: ddl_link,
+                                responseType: 'stream'
+                            })
+                            .then(async response => {
+                                // const contentDisposition = response.headers['content-disposition'];
+                                const filename =  response.headers['content-disposition'].split('filename=')[1].replace(/"/g, '');
+                                const v2 = response.request.res.responseUrl;
+
+                                const options = {
+                                    retry: {
+                                        maxRetries: 10,             // Increase retry attempts
+                                        delay: 3000                // Longer delay between retries
+                                    },
+                                    httpRequestOptions: {
+                                        timeout: 0,               // No timeout
+                                        headers: {
+                                            'Connection': 'keep-alive' // Encourage persistent connection
+                                        }
+                                    },
+                                    httpsRequestOptions: {
+                                        timeout: 0               // No timeout
+                                    }
+                                };
+
+                                const dl = new DownloaderHelper(v2, __dirname, options);
+
+                                dl.on('end', () => console.log('Download Completed'));
+                                dl.on('error', (err) => {
+                                    console.error('Download Failed', err);
+                                });
+
+                                dl.start()
+                                    .then(() => console.log('Download started'))
+                                    .catch(err => console.error('Error starting download:', err));
+
+/********************************************************************************************************************************* */
+/*                                                  Authenticate user                                                              */
+/********************************************************************************************************************************* */
+                                    // const client = new TelegramClient(stringSession, apiId, apiHash, {
+                                    //     connectionRetries: 5,
+                                    // });
+
+                                    // const AuthUser = async () => {
+                                    //     console.log("Loading interactive example...");
+                                    //     await client.start({
+                                    //         phoneNumber: async () => await input.text("number ?"),
+                                    //         password: async () => await input.text("password?"),
+                                    //         phoneCode: async () => await input.text("Code ?"),
+                                    //         onError: (err) => console.log(err),
+                                    //     });
+                                    //     console.log("You should now be connected.");
+                                    //     console.log(client.session.save()); // Save this string to avoid logging in again
+
+                                    //     const file = path.join(__dirname, filename); 
+                                    //     client.uploadFile(process.env.CHANNEL, file)
+                                    //         .then(message => {
+                                    //             console.log('File uploaded successfully!');
+                                    //         })
+                                    //         .catch(console.error);
+                                    // };
+
+                                    // AuthUser();
+
+                                // bot.sendMessage(chatId, `🎥 Video Link: \`${v2}\`\n\n⬇️ Direct Download Link: \`${ddl_link}\``);
+
+                            }).catch((error) => {
+                                console.log(error.message)
+                            });
+
+                }
+            }).catch((error) => {
+                console.log(error.message)
+            });
+        } catch (error) {
+            console.log(error)
+            bot.sendMessage(chatId, error.message);
+        }
+    }
+
+});
+
+
+
+
+https://www.asciiart.eu/text-to-ascii-art
+
+
+//17-06-2024
+const TelegramBot = require('node-telegram-bot-api');
+const express = require('express');
+const app = express();
+const fs = require('fs');
+const path = require('path');
+const axios = require('axios');
+const { TelegramClient } = require("telegram");
+const { StringSession } = require("telegram/sessions");
+const input = require("input");
+const request = require('request');
+const progress = require('progress-stream');
+const https = require('https'); // or 'https' for https:// URLs
+const { DownloaderHelper } = require('node-downloader-helper');
+
+
+require('dotenv').config({
+    path: './.env'
+});
+
+const apiId = parseInt(process.env.API_ID);
+const apiHash = process.env.API_HASH;
+const stringSession = new StringSession(process.env.SESSION); // fill this later with the value from session.save()
+
+
+// replace the value below with the Telegram token you receive from @BotFather
+const token = process.env.BOT_TOKEN;
+
+// Create a bot that uses 'polling' to fetch new updates
+const bot = new TelegramBot(token, { polling: true });
+
+// Matches "/start"
+bot.onText(/\/start/, (msg) => {
+    const chatId = msg.chat.id;
+
+    // send a message to the chat acknowledging receipt of their message
+    bot.sendMessage(chatId, 'Hello! 😊 Please give me a Terra link 🌍 and I will provide you with a video 🎥 and direct download link ⬇️.');
+});
+
+// Listen for any kind of message
+bot.on('message', async (msg) => {
+    const chatId = msg.chat.id;
+    const text = msg.text;
+
+    // Ignore '/start' command
+    if (text === '/start') {
+        return;
+    }
+    // Regular expression for the Terra box links
+    const patterns = [
+        /ww\.mirrobox\.com|www\.nephobox\.com|freeterabox\.com|www\.freeterabox\.com|1024tera\.com|4funbox\.co|www\.4funbox\.com|mirrobox\.com|nephobox\.com|terabox\.app|terabox\.com|www\.terabox\.ap|terabox\.fun|www\.terabox\.com|www\.1024tera\.co|www\.momerybox\.com|teraboxapp\.com|momerybox\.com|tibibox\.com|www\.tibibox\.com|www\.teraboxapp\.com/,
+    ];
+
+
+    if (!patterns.some(pattern => pattern.test(text))) {
+        console.log('Please enter a valid Terra box link.');
+        bot.sendMessage(chatId, 'Please enter a valid Terra box link.');
+    } else {
+        const url = text;
+
+        // Regular expression for the first pattern with optional 'https://' and 'www.'
+        const pattern1 = /(?:https?:\/\/)?(?:www\.)?(teraboxapp|1024terabox|freeterabox|1024tera)\.com\/s\/(?:1)?([^\/]+)/;
+        // Regular expression for the second pattern with optional 'https://' and 'www.'
+        const pattern2 = /(?:https?:\/\/)?(?:www\.)?(terabox|1024tera)\.(app|com)\/sharing\/link\?surl=([^&]+)/;
+
+        let surl;
+        if (pattern1.test(url)) {
+            // If URL matches the first pattern
+            surl = url.match(pattern1)[2];
+        } else if (pattern2.test(url)) {
+            // If URL matches the second pattern
+            surl = url.match(pattern2)[3];
+        }
+
+        const fetched_dl_link = `https://www.terabox.app/share/list?app_id=250528&web=1&channel=dubox&clienttype=0&jsToken=${process.env.JS_TOKEN}&dp-logid=${process.env.DP_LOG_ID}&page=1&num=20&by=name&order=asc&site_referer=https%3A%2F%2Fwww.terabox.app%2Fsharing%2Flink%3Fsurl%3DG0lgOotR0THhZCDLBacZPQ&shorturl=${surl}&root=1`;
+
+        const options = {
+            method: 'GET',
+            url: fetched_dl_link,
+            headers: {
+                'User-Agent': 'Mozilla/5.0',
+                'Referer': 'https://www.terabox.app/share/list?app_id=250528&web=1&channel=dubox&clienttype=0&jsToken=1&dp-logid=1&page=1&num=20&by=name&order=asc&site_referer=https%3A%2F%2Fwww.terabox.app%2Fsharing%2Flink%3Fsurl%3DG0lgOotR0THhZCDLBacZPQ&shorturl=',
+                'Cookie': process.env.COOKIE
+            }
+        };
+
+        await axios(options)
+            .then(async (response) => {
+                const data = response.data;
+                const file_name = data.title;
+                const fileUrl = data.list[0].dlink;
+                let outputString = file_name.replace(/\//g, '');
+                
+                bot.sendMessage(chatId, `\`${outputString}\`\n\`${data.list[0].dlink}\``, { parse_mode: 'Markdown' });
+                // bot.sendMessage(chatId, `\`${data.list[0].dlink}\``, { parse_mode: 'Markdown' });
+            })
+            .catch((error) => {
+                console.log(error);
+                bot.sendMessage(chatId, 'An error occurred while fetching the download link. Please try again later.');
+            });
+    }
+
+});
+
+
+
+
